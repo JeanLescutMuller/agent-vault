@@ -5,6 +5,8 @@ description: Log in to a website, create an account's password, or use a passwor
 
 # vault: logins without seeing a password
 
+Before a login, decide how to get into the account: skill `site-access` (an API? one of Jean's real accounts? a kept session?); this skill is the how of a password login.
+
 agent-vault (`/Users/jeanlescut/dev/agents/agent-vault`) is the only thing that reads Jean's Bitwarden. It runs as its own Mac user (`av-vault`); agents call `vault`, which checks Jean's grant, the tab and the website, then types into the page. No password ever reaches a transcript: agent-firewall's incoming hook replaces every one in every tool output by a token.
 
 ## Rules
