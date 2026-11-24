@@ -23,4 +23,5 @@ Version 2, since the split of agent-interfaces (2026-11-23) its own repo, `agent
 | switch from layer-vault | `doc/switch_from_layer.md` |
 | unlock (once installed) | `vault-admin unlock` |
 | grant a session | `sudo vault-admin grant <session UUID> site:shop.ch --for 2h --can login,new-password` |
+| a standing grant: every session, one website, login only, until revoked | `sudo vault-admin grant --any-session site:oxylabs.io --forever --can login` · end it: `sudo vault-admin revoke --any-session site:oxylabs.io` |
 | who holds what | `vault-admin status` |

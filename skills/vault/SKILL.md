@@ -25,6 +25,8 @@ sudo vault-admin grant <this session: $CLAUDE_CODE_SESSION_ID> site:<domain> --f
 sudo vault-admin grant <session> 'folder:Agent auto-login' --for 8h --can login,new-password             # every agent login
 ```
 
+A **standing grant** (`any session, forever` in `vault list`): Jean lets every session log in to one website, with no expiry (`sudo vault-admin grant --any-session site:<domain> --forever --can login`). It covers `login` on that website only: a new password, another website or another item still needs a grant of this session's own; the tab and website checks are the same.
+
 ## 2. The tab
 
 Claude in Chrome only, per skill `chrome`: `agent-chrome authorize-tab …`, `select_browser` (this account's agent profile), `tabs_context_mcp createIfEmpty` → TAB (the number). The profile needs Chrome's **View → Developer → Allow JavaScript from Apple Events** (Jean, once per profile); `vault` says so when it is off.

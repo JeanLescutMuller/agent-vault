@@ -18,7 +18,7 @@ import time
 from . import chrome
 from .bitwarden import Vault, describe, item_events
 from .common import BW_FOLDER, HOME, OUT, domain, log_event, now
-from .grants import GRANTS
+from .grants import ANY, GRANTS
 from .masking import MASK, load_json, save_json
 
 VAULT = Vault()
@@ -45,7 +45,8 @@ HELP = """vault: agent-vault for agents (DESIGN.md §3). <tab> = the Claude in C
   vault rename <item> <name> | set-username <item> <login> | add-website <item> <https url> | delete <item> [--dry]
   vault status
 vault-admin unlock | lock | sync | status | file-alerts · sudo vault-admin grant <session> <targets…> --for 2h --can login,new-password
-            · sudo vault-admin revoke <session> | --all"""
+            · sudo vault-admin grant --any-session site:<domain> --forever --can login      (a standing grant: every session)
+            · sudo vault-admin revoke <session> | --any-session [site:<domain>] | --all"""
 
 
 SYMBOLS = "-_.!@#%+="
@@ -247,7 +248,7 @@ def type_new_password(tab, *a):
 def type_token(tab, token, *a):
     d, _ = options(a, {"nth": "1"})
     where, here = page(tab)
-    if not GRANTS.covers_site(session(), here, "login") and not GRANTS.live(session()):
+    if not GRANTS.covers_site(session(), here, "login") and not GRANTS.live(session(), own=True):  # a standing grant: its site only
         raise no_grant(f"typing a token on {here} (ability login)")
     sid = token.strip("<>").split()[-1]
     v = MASK.suspected_value(sid)
@@ -346,7 +347,7 @@ def items(verb, *a):
     fid = VAULT.folder_id()
     if verb == "list":
         l_ok = granted(l, d_f)
-        return f"{len(l_ok)} granted item(s)\n" + "\n".join(
+        return "your grants:\n" + "\n".join("  " + x for x in GRANTS.summary(session())) + f"\n{len(l_ok)} granted item(s)\n" + "\n".join(
             f"{it['id'][:8]}\t{it.get('name')}\t{(it.get('login') or {}).get('username') or '(no username)'}\t"
             + " ".join(u.get("uri", "") for u in (it.get("login") or {}).get("uris") or []) for it in sorted(l_ok, key=lambda it: (it.get("name") or "").lower()))
     if verb == "find":
@@ -439,14 +440,18 @@ def admin(argv):
     if verb in ("grant", "revoke"):
         if not admin_ok():
             raise RuntimeError(f"`vault-admin {verb}` only through sudo (Jean's): refused")
+        d, rest = options(a, {"for": "", "can": ""}, flags=("--any-session", "--forever", "--all"))
         if verb == "revoke":
-            n = GRANTS.revoke(None if "--all" in a else (a[0] if a else ""))
+            if d.get("any-session"):
+                n = GRANTS.revoke(ANY, rest[0] if rest else None)
+            else:
+                n = GRANTS.revoke(None if d.get("all") else (rest[0] if rest else ""))
             log_event(event="revoke", n=n)
             return f"{n} grant(s) ended"
-        d, rest = options(a, {"for": "", "can": ""})
-        g = GRANTS.add(rest[0] if rest else "", rest[1:], d["for"], [c for c in d["can"].split(",") if c])
+        sid = ANY if d.get("any-session") else (rest.pop(0) if rest else "")
+        g = GRANTS.add(sid, rest, d["for"], [c for c in d["can"].split(",") if c], forever=bool(d.get("forever")))
         log_event(event="grant", **{k: v for k, v in g.items() if k not in ("ts", "dt")})
-        return "granted: " + GRANTS.summary(g["session"])[-1] + ("" if VAULT.session else "\nthe vault is locked: `vault-admin unlock`")
+        return "granted: " + GRANTS.line(g) + ("" if VAULT.session else "\nthe vault is locked: `vault-admin unlock`")
     if verb == "file-alerts":
         return file_alerts()
     if verb == "mask-key":  # the mask-only machine (the NAS): the public half of av-vault's import key, for tools/mask_to_nas.sh

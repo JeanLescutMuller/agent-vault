@@ -57,7 +57,7 @@ Stage (2026-11-23): **version 2, own repo since the split of agent-interfaces (n
 | what we build and why | `DESIGN.md` |
 | rogue agents (out of scope): threats and ideas | `CONSIDERATIONS.md` |
 | the code | `src/agent_vault/`: `cli.py` (`vault`, `vault-admin`), `chrome.py` (typing into the tab), `masking.py`, `grants.py`, `bitwarden.py`, `scrub.py`, `leak_scan.py`; `bin/`; `src/alerts.sh` (the job) |
-| the tests of the vault alone | `test/` (`harness.py`, `test_vault.py` V01-V22, `test_mask_only.py` N05 N06 N10, `test_install_static.py` S01-S04) |
+| the tests of the vault alone | `test/` (`harness.py`, `test_vault.py` V01-V26, `test_mask_only.py` N05 N06 N10, `test_install_static.py` S01-S04) |
 | the whole design across the three repos, the sandbox with the hooks | `/Users/jeanlescut/dev/agents/agent-firewall/` (`doc/agent-interfaces/DESIGN.md`, `sandbox/`) |
 | the hooks | `/Users/jeanlescut/dev/agents/agent-firewall/hooks/hook.py` `src/agent_firewall/tool_screen.py` |
 | the check's origin | `/Users/jeanlescut/dev/agents/agent-firewall/doc/prompt_*_vault_check_2026-11-21.md` (named layer_vault before the rename)` |

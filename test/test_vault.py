@@ -1,4 +1,4 @@
-"""agent-vault's command, cases V01–V22: unlock, mask, grants, the item commands, the tab checks before
+"""agent-vault's command, cases V01–V26: unlock, mask, grants (V23–V26: the standing grant), the item commands, the tab checks before
 typing, save-token, reveal, look-alikes, alerts, the lock, the one-folder mode. A fake vault; no Chrome, no Claude.
 
   bash test/run_all.sh vault     (or: .venv/bin/python test/test_vault.py)
@@ -117,6 +117,61 @@ c2, o2 = b.run("vault-admin", "file-alerts", env=env_t)
 tasks = open(os.path.join(b.dir, "tasks.log")).read() if os.path.exists(os.path.join(b.dir, "tasks.log")) else ""
 b.case("V18", "file-alerts: a leak and a look-alike → 2 tasks, no value; each once", "2 alert task" in o1 and "0 alert task" in o2
        and "Change the password" in tasks and "sh0p.localhost" in tasks and PW not in tasks, [o1, o2])
+
+# V23–V26: a standing grant (any session, forever, one website, login only; Jean, 2026-11-24). S3: a session with no grant of its
+# own. The website checks run in-process (as V13): a type-* that passes the tab check reads the tab's address from the real Chrome.
+S3 = "33333333-4444-5555-6666-777777777777"
+e3 = {"CLAUDE_CODE_SESSION_ID": S3}
+r = [b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "--forever", "--can", "login")[0],
+     b.run("vault-admin", "grant", "--any-session", "folder:Agent auto-login", "--forever", "--can", "login", env=admin)[0],
+     b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "--forever", "--can", "login,new-password", env=admin)[0],
+     b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "site:other.localhost", "--forever", "--can", "login", env=admin)[0],
+     b.run("vault-admin", "grant", "--any-session", "a1b2c3d4", "--forever", "--can", "login", env=admin)[0],
+     b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "--forever", env=admin)[0],
+     b.run("vault-admin", "grant", S3, "site:galaxus.localhost", "--forever", "--can", "login", env=admin)[0],
+     b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "--forever", "--for", "1h", "--can", "login", env=admin)[0]]
+c0, o0 = b.run("vault", "list", env=e3)
+b.case("V23", "standing grant: only through sudo; a folder, new-password, two websites, an item, no ability, --forever for one "
+       "session, --forever with --for: refused", r == [1] * 8 and c0 == 1 and "no grant" in o0, [r, o0])
+c1, o1 = b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "--forever", "--can", "login", env=admin)
+c2, o2 = b.run("vault-admin", "status")
+c3, o3 = b.run("vault", "list", env=e3)
+c4, o4 = b.run("vault", "status", env=e3)
+b.case("V24", "standing grant: made; status and every session's list show it as \"any session, forever\"; list shows the website's item",
+       c1 == 0 and "any session, forever  site:galaxus.localhost  can login" in o2 and c3 == 0
+       and "any session, forever" in o3 and "me@example.com" in o3 and "Bank" not in o3 and "any session, forever" in o4, [o1, o2, o3, o4])
+b.run("vault-admin", "grant", "--any-session", "site:galaxus.localhost", "--forever", "--can", "login", env={**env2, **admin})
+os.environ["CLAUDE_CODE_SESSION_ID"] = S3
+
+
+def refused(f, *a):
+    try:
+        f(*a)
+        return ""
+    except RuntimeError as e:
+        return str(e) or "refused"
+
+
+G = cli.GRANTS
+r = {"other_tab": b.run("vault", "type-password", "801", env=e3), "other_item": b.run("vault", "show", "Bank", env=e3),
+     "here": refused(cli.login_item, "a1b2c3d4", "galaxus.localhost"), "other_site": refused(cli.login_item, "", "other.localhost"),
+     "item_elsewhere": refused(cli.login_item, "a1b2c3d4", "other.localhost"),
+     "token_elsewhere": G.covers_site(S3, "other.localhost", "login") or bool(G.live(S3, own=True)),
+     "new": G.covers_site(S3, "galaxus.localhost", "new-password")}
+os.environ["CLAUDE_CODE_SESSION_ID"] = S1
+b.run("vault-admin", "revoke", "--any-session", env={**env2, **admin})
+b.case("V25", "standing grant, every other check the same: another session's tab, another item, another website (an item, a token), "
+       "a new password: refused; the website's item passes", r["other_tab"][0] == 1 and "another session" in r["other_tab"][1]
+       and r["other_item"][0] == 1 and r["here"] == "" and "no grant" in r["other_site"] and "nothing typed" in r["item_elsewhere"]
+       and not r["token_elsewhere"] and not r["new"], r)
+c1, o1 = b.run("vault-admin", "revoke", S3, env=admin)
+c2, o2 = b.run("vault", "list", env=e3)
+c3, o3 = b.run("vault-admin", "revoke", "--any-session", "site:other.localhost", env=admin)
+c4, o4 = b.run("vault-admin", "revoke", "--any-session", "site:galaxus.localhost", env=admin)
+c5, o5 = b.run("vault", "list", env=e3)
+c6, o6 = b.run("vault", "list")
+b.case("V26", "standing grant: revoking a session keeps it; revoke --any-session <its site> ends it, and only it",
+       "0 grant" in o1 and c2 == 0 and "0 grant" in o3 and "1 grant" in o4 and c5 == 1 and "no grant" in o5 and c6 == 0, [o1, o3, o4, o5, o6])
 
 c1, o1 = b.run("vault-admin", "revoke", "--all", env=admin)
 c2, o2 = b.run("vault-admin", "status")

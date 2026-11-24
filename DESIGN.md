@@ -67,7 +67,7 @@ Claude Code applies the ingress rewrite (`updatedToolOutput`) before the model s
 | `vault rename · set-username · add-website · delete <item> …` | tidy an item (R5) | on the item |
 | `vault status` | locked or not, the caller's grants | none |
 | `vault-admin unlock` · `lock` · `sync` · `status` | Jean: master password; fingerprints refreshed | – |
-| `sudo vault-admin grant <session> <item>… \| site:<domain> \| folder:"<name>" --for 2h --can login,new-password` · `revoke <session> \| --all` | Jean only (root) | – |
+| `sudo vault-admin grant <session> <item>… \| site:<domain> \| folder:"<name>" --for 2h --can login,new-password` · `grant --any-session site:<domain> --forever --can login` · `revoke <session> \| --any-session [site:<domain>] \| --all` | Jean only (root) | – |
 
 The caller's session is `$CLAUDE_CODE_SESSION_ID` (trusted: rogue agents are out of scope). A refusal names the missing grant, so the agent can tell Jean.
 
@@ -88,6 +88,17 @@ Sandbox: the same code as Jean's user, every path from the environment (`AV_HOME
 ## 6. Grants
 
 Unchanged from version 1: `AV_HOME/grants.json` [{ts, dt, session, targets, can, until_ts}]; targets: items, `site:<domain>` (an account not yet in the vault), `folder:"<name>"`; abilities `login`, `new-password`. `grant` and `revoke` only from root (production: the caller's uid; sandbox: `AV_ADMIN_OK=1`).
+
+**Standing grant** (Jean, 2026-11-24: "any Claude session can log in to my Oxylabs dashboard on its own, with no expiry"): `sudo vault-admin grant --any-session site:<domain> --forever --can login` stores `session: "*"`, `until_ts: null`. It applies to every session (`vault list`, `vault status`, `vault-admin status` show it as "any session, forever"), and is ended only by `sudo vault-admin revoke --any-session [site:<domain>]` or `--all` (`revoke <session>` keeps it).
+
+| Limit | Why |
+|---|---|
+| exactly one `site:<domain>` target: no item, no `folder:` | a standing grant stays one website |
+| ability `login` only: no `new-password` | no account made, no item written, by any session |
+| `--forever` only with `--any-session` | a session's own grant still takes `--for` |
+| `type-token` on another website still needs the session's own grant | a standing grant never opens other sites |
+
+Every other check is unchanged: the tab is this session's own Claude in Chrome tab, the page is on the item's site, look-alikes refused (§8). Tests: `test/test_vault.py` V23–V26.
 
 ## 7. Fingerprints and `mask`
 
@@ -133,7 +144,7 @@ agent-vault/
 
 ## 11. The sandbox, and what it proves
 
-The vault's own tests are in `test/` (V01-V22, N05, N06, N10; `bash test/run_all.sh`). The tests of the vault together with the two hooks (battle, end to end) are agent-firewall's sandbox (`/Users/jeanlescut/dev/agents/agent-firewall/sandbox/`), which finds this repo through `AV_REPO` (Jean, 2026-11-23: agent-interfaces split in three). As first measured here: everything runs from the repos with a fake vault; nothing on the Mac changes (no sudo, no `~/.claude/settings.json`: the test sessions get the hooks through `claude --settings <sandbox>/settings.json`).
+The vault's own tests are in `test/` (V01-V26, N05, N06, N10; `bash test/run_all.sh`). The tests of the vault together with the two hooks (battle, end to end) are agent-firewall's sandbox (`/Users/jeanlescut/dev/agents/agent-firewall/sandbox/`), which finds this repo through `AV_REPO` (Jean, 2026-11-23: agent-interfaces split in three). As first measured here: everything runs from the repos with a fake vault; nothing on the Mac changes (no sudo, no `~/.claude/settings.json`: the test sessions get the hooks through `claude --settings <sandbox>/settings.json`).
 
 | Test | Proves | Result (2026-11-21) |
 |---|---|---|
