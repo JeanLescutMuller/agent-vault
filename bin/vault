@@ -17,5 +17,5 @@ fi
 d="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 py="$d/venv/bin/python"                                       # installed: root-owned, cryptography only (requirements.txt)
 [ -x "$py" ] || py="$d/.venv/bin/python"                       # the dev venv (uv sync --locked: pyproject.toml, uv.lock)
-[ -x "$py" ] || py="$(command -v python3.12 || command -v python3)"
+[ -x "$py" ] || py="$(command -v python3)"
 exec "$py" -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1) + "/src"); from agent_vault.cli import main; main()' "$d" "$name" "$@"

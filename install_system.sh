@@ -8,7 +8,8 @@
 #       --recopy copies again (overwrites the new side: use it only before the switch, doc/switch_from_layer.md).
 # Makes:
 #   the hidden Mac user and group av-vault (an id in 450-499, no login, no password, shell /usr/bin/false)
-#   /usr/local/agent-vault/        root:wheel 755: src, bin (vault, vault-admin, vault-run, vault-type), venv (Python 3.12 + requirements.txt)
+#   /usr/local/agent-vault/        root:wheel 755: src, bin (vault, vault-admin, vault-run, vault-type), python (a root-owned copy of
+#                                  Jean's uv Python 3.14, skill runtime-environments), venv (on it + requirements.txt)
 #   /var/agent-vault/              av-vault 700: the Bitwarden login (bw/main), session, key, fingerprints, grants, suspected secrets
 #   /var/agent-vault-out/          av-vault:staff 750: alerts.jsonl, events (what Jean's user may read: never a value)
 #   /etc/sudoers.d/agent-vault     root 440, checked with visudo:
@@ -18,14 +19,12 @@
 #   vault-admin unlock (his master password).
 # Linux (the NAS, task D5): a mask-only copy. The same users and folders (useradd, Jean's own group instead of staff), the
 # file MASK_ONLY beside src/ (cli.py: mask, reveal, status, the import of the Mac's fingerprints; no Bitwarden, no grant,
-# no typing: no vault-type sudoers line), Python: a root-owned copy of Jean's uv Python 3.14 (skill runtime-environments) in
-# /usr/local/agent-vault/python with the venv on it; av-vault's import key, its public half in /var/agent-vault-out/import.pub.
+# no typing: no vault-type sudoers line), the same Python as the Mac's; av-vault's import key, its public half in /var/agent-vault-out/import.pub.
 # Then, on the Mac: bash /Users/jeanlescut/dev/agents/agent-vault/tools/mask_to_nas.sh (the Mac's key and fingerprints, sealed for this av-vault).
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 SYS=/usr/local/agent-vault VAR=/var/agent-vault OUTD=/var/agent-vault-out SUDOERS=/etc/sudoers.d/agent-vault
 LVAR=/var/layer-vault LOUT=/var/layer-vault-out   # the live layer-vault's folders: read by --from-layer, never written
-PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12
 FROM_LAYER=0 RECOPY=0
 for a in "$@"; do case "$a" in
     --from-layer) FROM_LAYER=1 ;; --recopy) RECOPY=1 ;;
@@ -33,6 +32,7 @@ for a in "$@"; do case "$a" in
 [ "$RECOPY" = 0 ] || [ "$FROM_LAYER" = 1 ] || { echo "--recopy needs --from-layer"; exit 2; }
 OS=$(uname -s) GRP=wheel
 [ "$OS" = Linux ] && GRP=root
+sed_i() { if [ "$OS" = Darwin ]; then sed -i '' "$@"; else sed -i "$@"; fi; }
 step() { printf '\n%s\n' "$1"; }
 ok() { printf '  ok   %s\n' "$1"; }
 die() { printf '  FAILED  %s\n' "$1"; exit 1; }
@@ -42,14 +42,13 @@ JEAN="${SUDO_USER:-}"
 [ -n "$JEAN" ] && [ "$JEAN" != root ] || die "run through sudo from Jean's user"
 if [ "$OS" = Darwin ]; then
     JHOME=$(dscl . -read "/Users/$JEAN" NFSHomeDirectory | awk '{print $2}')
-    [ -x "$PY" ] || die "Python 3.12 missing: $PY (python.org installer)"
     OUTG=staff
 else
     JHOME=$(getent passwd "$JEAN" | cut -d: -f6)
     OUTG=$(id -gn "$JEAN")   # what Jean's user may read (alerts), as staff on the Mac
-    UVPY=$(readlink -f "$JHOME/.local/bin/python3" || true)   # …/uv/python/cpython-3.14.x-linux-x86_64-gnu/bin/python3.14
-    case "$UVPY" in */cpython-3.14*/bin/python3.14) PYHOME="${UVPY%/bin/*}" ;; *) die "uv's Python 3.14 missing as $JHOME/.local/bin/python3 (skill runtime-environments)" ;; esac
 fi
+UVPY=$(readlink -f "$JHOME/.local/bin/python3" || true)   # …/uv/python/cpython-3.14.x-<platform>/bin/python3.14
+case "$UVPY" in */cpython-3.14*/bin/python3.14) PYHOME="${UVPY%/bin/*}" ;; *) die "uv's Python 3.14 missing as $JHOME/.local/bin/python3 (skill runtime-environments)" ;; esac
 
 step "repo"
 sudo -u "$JEAN" git -C "$SRC" diff --quiet HEAD -- src bin requirements.txt install_system.sh \
@@ -112,29 +111,22 @@ fi
 fi
 
 step "code"
-# Not yet (D5 check, 2026-11-22): pip --require-hashes --only-binary :all: from a hashed lock. uv.lock (requires-python >= 3.14)
-# holds no cffi wheel for the Mac's python.org 3.12, so a lock exported from it would break the Mac's venv: first the Mac's
-# root-owned Python moves to 3.14 (skill runtime-environments, migration step 7), then one hashed requirements.txt for both.
+# Possible since both machines run 3.14 (2026-11-24), not done yet: one hashed requirements.txt exported from uv.lock, installed
+# with pip --require-hashes --only-binary :all:.
 NEW="$SYS.new"
 [ ! -e "$NEW" ] || rm -r /usr/local/agent-vault.new
 mkdir -p "$NEW"
 cp -R "$SRC/src" "$SRC/bin" "$SRC/requirements.txt" "$NEW/"
 find "$NEW" -name __pycache__ -type d -prune -exec rm -r {} +
-if [ "$OS" = Linux ]; then  # the venv on a root-owned copy of uv's 3.14, built in $NEW, then its paths set to $SYS (after the swap)
-    cp -R "$PYHOME" "$NEW/python"
-    "$NEW/python/bin/python3" -m venv "$NEW/venv" && "$NEW/venv/bin/python" -m pip -q install --disable-pip-version-check --no-cache-dir -r "$NEW/requirements.txt" || die "venv"
-    "$NEW/venv/bin/python" -I -c "import sys; sys.path.insert(0, '$NEW/src'); import agent_vault.cli, agent_vault.bundle, cryptography" \
-        || die "the code does not import with $NEW/venv"
-    sed -i "s#$NEW/#$SYS/#g" "$NEW/venv/pyvenv.cfg"
-    for l in "$NEW"/venv/bin/python*; do [ ! -L "$l" ] || ln -sfn "$(readlink "$l" | sed "s#^$NEW/#$SYS/#")" "$l"; done
-    touch "$NEW/MASK_ONLY"   # cli.py: mask only (no Bitwarden, no grant, no typing on this machine)
-elif [ -x "$SYS/venv/bin/python" ] && cmp -s "$SRC/requirements.txt" "$SYS/requirements.txt"; then
-    cp -R "$SYS/venv" "$NEW/venv"                                  # the same packages: no new download
-else
-    "$PY" -m venv "$NEW/venv" && "$NEW/venv/bin/pip" -q install --disable-pip-version-check -r "$NEW/requirements.txt" || die "venv"
-fi
-[ "$OS" = Linux ] || "$NEW/venv/bin/python" -I -c "import sys; sys.path.insert(0, '$NEW/src'); import agent_vault.cli, agent_vault.chrome, cryptography" \
+# the venv on a root-owned copy of uv's 3.14 (Jean's user cannot change it), built in $NEW, then its paths set to $SYS (after the swap)
+cp -R "$PYHOME" "$NEW/python"
+"$NEW/python/bin/python3" -m venv "$NEW/venv" && "$NEW/venv/bin/python" -m pip -q install --disable-pip-version-check --no-cache-dir -r "$NEW/requirements.txt" || die "venv"
+MODS=agent_vault.chrome; [ "$OS" = Darwin ] || MODS=agent_vault.bundle
+"$NEW/venv/bin/python" -I -c "import sys; sys.path.insert(0, '$NEW/src'); import agent_vault.cli, $MODS, cryptography" \
     || die "the code does not import with $NEW/venv"
+sed_i "s#$NEW/#$SYS/#g" "$NEW/venv/pyvenv.cfg"
+for l in "$NEW"/venv/bin/python*; do [ ! -L "$l" ] || ln -sfn "$(readlink "$l" | sed "s#^$NEW/#$SYS/#")" "$l"; done
+[ "$OS" = Darwin ] || touch "$NEW/MASK_ONLY"   # cli.py: mask only (no Bitwarden, no grant, no typing on this machine)
 chown -R "root:$GRP" "$NEW" && chmod -R go-w "$NEW" && chmod -R a+rX "$NEW" && chmod 755 "$NEW"/bin/*
 [ ! -e "$SYS" ] || mv "$SYS" "$SYS.old"
 mv "$NEW" "$SYS"
