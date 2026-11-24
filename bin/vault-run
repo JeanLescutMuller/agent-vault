@@ -1,0 +1,11 @@
+#!/bin/bash
+# The only program sudo lets Jean's user run as av-vault (/etc/sudoers.d/agent-vault): the installed vault or vault-admin, with
+# av-vault's own folders. SUDO_UID (set by sudo, never by the caller) says who asked: 0 = root (Jean's `sudo vault-admin`).
+#   sudo -n -u av-vault /usr/local/agent-vault/bin/vault-run vault|vault-admin <arguments>
+set -euo pipefail
+[ "$(id -un)" = av-vault ] || { echo "vault-run: runs as av-vault only (through vault or vault-admin)" >&2; exit 2; }
+name="${1:-}"; shift || true
+case "$name" in vault|vault-admin) ;; *) echo "vault-run: vault or vault-admin" >&2; exit 2 ;; esac
+export HOME=/var/agent-vault AV_JEAN="${SUDO_USER:-}"   # AV_JEAN: whose Chrome vault-type types into
+cd /var/agent-vault
+exec /usr/local/agent-vault/venv/bin/python -I -c 'import sys; sys.path.insert(0, "/usr/local/agent-vault/src"); from agent_vault.cli import main; main()' "$name" "$@"

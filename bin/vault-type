@@ -1,0 +1,19 @@
+#!/bin/bash
+# The one step of agent-vault that needs Jean's login session: run by av-vault only, as Jean's user (/etc/sudoers.d/agent-vault).
+#   vault-type jxa      a JavaScript-for-Automation script on stdin (the page script, with the value) → Apple's osascript, whose
+#                       memory no agent can read (an Apple binary: System Integrity Protection); its reply on stdout, never the value
+#   vault-type tab <n>  the Chrome kit's record of Claude in Chrome tab n (open.json, in Jean's home, which av-vault cannot read)
+set -euo pipefail
+case "${1:-}" in
+    jxa) exec /usr/bin/osascript -l JavaScript - ;;
+    tab)
+        [[ "${2:-}" =~ ^[0-9]+$ ]] || { echo "vault-type tab <number>" >&2; exit 2; }
+        exec /usr/bin/python3 -I -c 'import json, os, pwd, sys
+f = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, "opt/chrome-gateways/state/open.json")
+try:
+    d = json.load(open(f))
+except (OSError, ValueError):
+    d = {}
+print(json.dumps(d.get(sys.argv[1])))' "$2" ;;
+    *) echo "vault-type jxa | tab <n>" >&2; exit 2 ;;
+esac

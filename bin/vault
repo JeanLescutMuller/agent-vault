@@ -1,0 +1,21 @@
+#!/bin/bash
+# vault (agents) and vault-admin (Jean): agent-vault's two commands (DESIGN.md §3-§5); one script, named by how it is called.
+# Installed in /usr/local/agent-vault/bin (root-owned), linked from ~/.local/bin:
+#   called by Jean's user (an agent, a job, Jean): runs as av-vault through the sudoers line of vault-run (the environment
+#     reset; CLAUDE_CODE_SESSION_ID kept: whose grant, whose tab)
+#   called by root (`sudo vault-admin grant …`, Jean): the same, and vault-run sees SUDO_UID=0: Jean's admin commands
+#   AV_HOME set (the sandbox, tests): runs this copy as the caller, on that folder
+set -euo pipefail
+name="$(basename "$0")"
+SYS=/usr/local/agent-vault
+here=0   # vault-admin file-alerts stays in Jean's user: it reads only /var/agent-vault-out (no value) and files Todoist tasks with his login
+[ "$name" = vault-admin ] && [ "${1:-}" = file-alerts ] && here=1
+if [ -z "${AV_HOME:-}" ] && [ "$here" = 0 ] && [ "$(id -un)" != av-vault ] && [ -x "$SYS/bin/vault-run" ]; then
+    cd /   # av-vault cannot read the caller's folder (no argument of vault is a file path); else bash warns on every call
+    exec sudo -n -u av-vault "$SYS/bin/vault-run" "$name" "$@"
+fi
+d="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+py="$d/venv/bin/python"                                       # installed: root-owned, cryptography only (requirements.txt)
+[ -x "$py" ] || py="$d/.venv/bin/python"                       # the dev venv (uv sync --locked: pyproject.toml, uv.lock)
+[ -x "$py" ] || py="$(command -v python3.12 || command -v python3)"
+exec "$py" -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1) + "/src"); from agent_vault.cli import main; main()' "$d" "$name" "$@"

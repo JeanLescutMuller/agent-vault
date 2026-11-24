@@ -1,0 +1,8 @@
+[project]
+name = "agent-vault"
+version = "0.1.0"
+description = "Jean's Bitwarden for agents: no long-lived secret reaches a transcript"
+requires-python = ">=3.14"
+dependencies = [
+    "cryptography==50.0.2",
+]
